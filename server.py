@@ -21,14 +21,7 @@ INSSMART_URL = "https://api.inssmart.ru/v1/product-finance/offers"
 
 INSSMART_TOKEN = os.getenv("INSSMART_TOKEN")
 
-@app.get("/api/debug-ip")
-def debug_ip():
-    response = requests.get(
-        "https://api.ipify.org?format=json",
-        timeout=10,
-    )
 
-    return response.json()
 
 
 @app.get("/api/offers")
@@ -61,6 +54,11 @@ def get_offers():
         headers=headers,
         timeout=20,
     )
+
+    print("INSSMART STATUS:", response.status_code)
+    print("INSSMART SERVER:", response.headers.get("server"))
+    print("INSSMART CONTENT-TYPE:", response.headers.get("content-type"))
+    print("INSSMART RESPONSE:", response.text[:500])
 
     if response.status_code != 200:
         print("INSSMART STATUS:", response.status_code)
