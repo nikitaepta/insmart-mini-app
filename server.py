@@ -1,6 +1,8 @@
 import os
-
+import uuid
+import time
 import requests
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,40 +10,194 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
 
 
+# =========================
+# CORS
+# =========================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-INSSMART_URL = "https://api.inssmart.ru/v1/product-finance/offers"
+# =========================
+# INSSMART
+# =========================
 
-INSSMART_TOKEN = os.getenv("INSSMART_TOKEN")
+TOKEN_URL = "https://api.inssmart.ru/v1/account/accounts/token"
+
+OFFERS_URL = "https://api.inssmart.ru/v1/product-finance/offers"
 
 
+INSSMART_PHONE = os.getenv("INSSMART_PHONE", "").strip()
+INSSMART_PASSWORD = os.getenv("INSSMART_PASSWORD", "")
+
+INSSMART_LOCATION = os.getenv(
+    "INSSMART_LOCATION",
+    "Россия, Москва"
+)
+
+INSSMART_DOMAIN = os.getenv(
+    "INSSMART_DOMAIN",
+    "partners"
+)
 
 
-@app.get("/api/offers")
-def get_offers():
-    if not INSSMART_TOKEN:
-        raise HTTPException(
-            status_code=500,
-            detail="INSSMART_TOKEN не задан"
+# Текущий токен держим только в памяти Railway
+_cached_token = None
+
+
+# =========================
+# ПОЛУЧЕНИЕ TOKEN
+# =========================
+
+def extract_token(data):
+    """
+    Пытается найти JWT в распространённых форматах ответа.
+    Сам токен нигде не логируется.
+    """
+
+    if isinstance(data, str):
+        value = data.strip()
+
+        if value.startswith("Bearer "):
+            value = value[7:].strip()
+
+        # JWT обычно состоит из 3 частей
+        if value.count(".") == 2:
+            return value
+
+        return None
+
+    if isinstance(data, dict):
+        possible_keys = [
+            "token",
+            "accessToken",
+            "access_token",
+            "jwt",
+            "idToken",
+            "id_token",
+        ]
+
+        for key in possible_keys:
+            value = data.get(key)
+
+            if isinstance(value, str):
+                value = value.strip()
+
+                if value.startswith("Bearer "):
+                    value = value[7:].strip()
+
+                if value.count(".") == 2:
+                    return value
+
+        # Рекурсивно ищем внутри вложенных объектов
+        for value in data.values():
+            found = extract_token(value)
+
+            if found:
+                return found
+
+    if isinstance(data, list):
+        for value in data:
+            found = extract_token(value)
+
+            if found:
+                return found
+
+    return None
+
+
+def get_inssmart_token():
+    global _cached_token
+
+    # Используем уже полученный токен
+    if _cached_token:
+        return _cached_token
+
+    if not INSSMART_PHONE:
+        raise RuntimeError(
+            "Не задана переменная INSSMART_PHONE"
         )
 
-    headers = {
-        "Authorization": INSSMART_TOKEN,
-        "Accept": "application/json",
-        "Origin": "https://partners.inssmart.ru",
-        "Referer": "https://partners.inssmart.ru/",
+    if not INSSMART_PASSWORD:
+        raise RuntimeError(
+            "Не задана переменная INSSMART_PASSWORD"
+        )
+
+    # Данные делаем multipart/form-data,
+    # как это делает браузер Inssmart.
+    form_data = {
+        "statVisitId": str(uuid.uuid4()),
+        "statClientId": str(uuid.uuid4()),
+        "statYmClientId": str(int(time.time() * 1000)),
+        "location": INSSMART_LOCATION,
+        "domain": INSSMART_DOMAIN,
+        "phone": INSSMART_PHONE,
+        "password": INSSMART_PASSWORD,
     }
 
+    files = {
+        key: (None, value)
+        for key, value in form_data.items()
+    }
+
+    response = requests.post(
+        TOKEN_URL,
+        files=files,
+        headers={
+            "Accept": "application/json, text/plain, */*",
+        },
+        timeout=30,
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            f"Inssmart token request failed: HTTP {response.status_code}"
+        )
+
+    try:
+        data = response.json()
+    except ValueError:
+        data = response.text
+
+    token = extract_token(data)
+
+    if not token:
+        if isinstance(data, dict):
+            keys = list(data.keys())
+        else:
+            keys = [type(data).__name__]
+
+        raise RuntimeError(
+            f"Inssmart вернул ответ, но JWT не найден. "
+            f"Поля ответа: {keys}"
+        )
+
+    _cached_token = token
+
+    return token
+
+
+def refresh_inssmart_token():
+    global _cached_token
+
+    _cached_token = None
+
+    return get_inssmart_token()
+
+
+# =========================
+# OFFERS
+# =========================
+
+def request_offers(token):
     params = {
         "startAt": 0,
-        "maxResults": 25,
+        "maxResults": 100,
         "sortNulls": "true",
         "types[]": 3,
         "status": 1,
@@ -49,71 +205,66 @@ def get_offers():
     }
 
     response = requests.get(
-        INSSMART_URL,
+        OFFERS_URL,
         params=params,
-        headers=headers,
-        timeout=20,
+        headers={
+            "Accept": "application/json, text/plain, */*",
+            "Authorization": f"Bearer {token}",
+        },
+        timeout=30,
     )
 
-    print("INSSMART STATUS:", response.status_code)
-    print("INSSMART SERVER:", response.headers.get("server"))
-    print("INSSMART CONTENT-TYPE:", response.headers.get("content-type"))
-    print("INSSMART RESPONSE:", response.text[:500])
+    return response
 
-    if response.status_code != 200:
-        print("INSSMART STATUS:", response.status_code)
-        print("INSSMART RESPONSE:", response.text[:2000])
+
+@app.get("/api/offers")
+def offers():
+    try:
+        token = get_inssmart_token()
+
+        response = request_offers(token)
+
+        # Если JWT протух — получаем новый и пробуем ещё раз
+        if response.status_code == 401:
+            token = refresh_inssmart_token()
+
+            response = request_offers(token)
+
+        if not response.ok:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Inssmart returned HTTP {response.status_code}",
+            )
+
+        return response.json()
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        # Не выводим пароль/JWT
+        print(f"Inssmart error: {error}")
 
         raise HTTPException(
-            status_code=response.status_code,
-            detail="Ошибка запроса к Inssmart"
+            status_code=500,
+            detail="Не удалось получить предложения",
         )
 
-    data = response.json()
 
-    offers = []
+# =========================
+# HEALTH CHECK
+# =========================
 
-    for offer in data.get("items", []):
-        product = offer.get("productInfo") or {}
-        company = offer.get("company") or {}
-
-        logo = None
-
-        for attachment in offer.get("attachments", []):
-            if attachment.get("type") == "mini":
-                logo = attachment.get("link")
-                break
-
-        offers.append({
-            "id": offer.get("id"),
-            "name": company.get("name") or offer.get("name"),
-            "amountFrom": product.get("amountFrom"),
-            "amountTo": product.get("amountTo"),
-            "termFrom": product.get("creditTermFrom"),
-            "termTo": product.get("creditTermTo"),
-            "interestRate": product.get("interestRate"),
-            "description": offer.get("clientDescription"),
-            "disclaimer": offer.get("disclaimer"),
-            "conditions": offer.get("conditions"),
-            "logo": logo,
-            "link": offer.get("link"),
-        })
-
+@app.get("/")
+def root():
     return {
-        "total": data.get("total", 0),
-        "offers": offers,
+        "status": "ok",
+        "service": "insmart-api"
     }
-if __name__ == "__main__":
-    import uvicorn
 
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=8000
-    )
-    print("INSSMART REQUEST HEADERS:", {
-        "Authorization": "Bearer ***",
-        "Accept": "application/json",
-        "Origin": "https://partners.inssmart.ru",
-        "Referer": "https://partners.inssmart.ru/",
-    })
+
+@app.get("/api/health")
+def health():
+    return {
+        "status": "ok"
+    }
