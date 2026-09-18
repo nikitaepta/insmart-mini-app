@@ -54,6 +54,9 @@ def get_offers():
     )
 
     if response.status_code != 200:
+        print("INSSMART STATUS:", response.status_code)
+        print("INSSMART RESPONSE:", response.text[:2000])
+
         raise HTTPException(
             status_code=response.status_code,
             detail="Ошибка запроса к Inssmart"
