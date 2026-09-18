@@ -114,22 +114,15 @@ def extract_token(data):
 def get_inssmart_token():
     global _cached_token
 
-    # Используем уже полученный токен
     if _cached_token:
         return _cached_token
 
     if not INSSMART_PHONE:
-        raise RuntimeError(
-            "Не задана переменная INSSMART_PHONE"
-        )
+        raise RuntimeError("Не задана переменная INSSMART_PHONE")
 
     if not INSSMART_PASSWORD:
-        raise RuntimeError(
-            "Не задана переменная INSSMART_PASSWORD"
-        )
+        raise RuntimeError("Не задана переменная INSSMART_PASSWORD")
 
-    # Данные делаем multipart/form-data,
-    # как это делает браузер Inssmart.
     form_data = {
         "statVisitId": str(uuid.uuid4()),
         "statClientId": str(uuid.uuid4()),
@@ -141,16 +134,27 @@ def get_inssmart_token():
     }
 
     files = {
-        key: (None, value)
+        key: (None, str(value))
         for key, value in form_data.items()
+    }
+
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://partners.inssmart.ru",
+        "Referer": "https://partners.inssmart.ru/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/134.0.0.0 Safari/537.36"
+        ),
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
     }
 
     response = requests.post(
         TOKEN_URL,
         files=files,
-        headers={
-            "Accept": "application/json, text/plain, */*",
-        },
+        headers=headers,
         timeout=30,
     )
 
