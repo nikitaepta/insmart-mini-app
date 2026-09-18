@@ -1,64 +1,667 @@
+
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+    --bg: var(--tg-theme-bg-color, #f4f7fb);
+    --card: var(--tg-theme-secondary-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #111827);
+    --hint: var(--tg-theme-hint-color, #7c8798);
+    --button: var(--tg-theme-button-color, #168cff);
+    --button-text: var(--tg-theme-button-text-color, #ffffff);
+
+    --blue: #168cff;
+    --blue-dark: #0968c9;
+    --purple: #7357ff;
+
+    --border: rgba(20, 40, 80, 0.08);
+    --shadow: 0 12px 35px rgba(25, 50, 90, 0.09);
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
 body {
     margin: 0;
-    padding: 0;
+    min-height: 100vh;
 
-    font-family: Arial, sans-serif;
+    background:
+        radial-gradient(
+            circle at 90% -10%,
+            rgba(22, 140, 255, 0.14),
+            transparent 32%
+        ),
+        radial-gradient(
+            circle at -10% 20%,
+            rgba(115, 87, 255, 0.08),
+            transparent 30%
+        ),
+        var(--bg);
 
-    background: var(--tg-theme-bg-color);
-    color: var(--tg-theme-text-color);
+    color: var(--text);
+
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Display",
+        "SF Pro Text",
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
+
+    overflow-x: hidden;
 }
 
 .container {
-    padding: 20px;
-    max-width: 600px;
-    margin: auto;
+    width: 100%;
+    max-width: 680px;
+
+    margin: 0 auto;
+
+    padding:
+        max(18px, env(safe-area-inset-top))
+        14px
+        max(35px, env(safe-area-inset-bottom));
+
+    animation: pageAppear 0.45s ease-out;
 }
 
-h1 {
-    margin-bottom: 5px;
-}
 
-.subtitle {
-    color: var(--tg-theme-hint-color);
+/* =========================================================
+   HERO
+   ========================================================= */
+
+.header {
+    position: relative;
+
     margin-bottom: 20px;
+    padding: 24px 21px;
+
+    border-radius: 27px;
+
+    color: #ffffff;
+
+    background:
+        radial-gradient(
+            circle at 85% 20%,
+            rgba(255, 255, 255, 0.22),
+            transparent 25%
+        ),
+        linear-gradient(
+            135deg,
+            #0b8cff 0%,
+            #396cff 48%,
+            #7357ff 100%
+        );
+
+    box-shadow:
+        0 18px 45px rgba(48, 105, 220, 0.25);
+
+    overflow: hidden;
 }
+
+.header::before {
+    content: "";
+
+    position: absolute;
+
+    width: 170px;
+    height: 170px;
+
+    right: -65px;
+    top: -75px;
+
+    border-radius: 50%;
+
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.header::after {
+    content: "";
+
+    position: absolute;
+
+    width: 100px;
+    height: 100px;
+
+    right: 55px;
+    bottom: -70px;
+
+    border-radius: 50%;
+
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.header h1 {
+    position: relative;
+    z-index: 2;
+
+    margin: 0;
+
+    font-size: 28px;
+    line-height: 1.15;
+
+    font-weight: 850;
+
+    letter-spacing: -0.8px;
+}
+
+.header p {
+    position: relative;
+    z-index: 2;
+
+    margin: 9px 0 0;
+
+    max-width: 430px;
+
+    color: rgba(255, 255, 255, 0.86);
+
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.header::marker {
+    display: none;
+}
+
+
+/* =========================================================
+   OFFER COUNT
+   ========================================================= */
+
+.offer-count {
+    display: inline-flex;
+    align-items: center;
+
+    margin-top: 16px;
+
+    padding: 7px 11px;
+
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.17);
+
+    color: #ffffff;
+
+    font-size: 12px;
+    font-weight: 700;
+
+    backdrop-filter: blur(10px);
+}
+
+
+/* =========================================================
+   OFFER CARD
+   ========================================================= */
 
 .offer {
-    background: var(--tg-theme-secondary-bg-color);
+    position: relative;
+
+    margin-bottom: 15px;
+    padding: 18px;
+
+    background: var(--card);
+
+    border: 1px solid var(--border);
+
+    border-radius: 23px;
+
+    box-shadow: var(--shadow);
+
+    overflow: hidden;
+
+    animation: cardAppear 0.5s ease both;
+
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+}
+
+.offer:nth-child(2) {
+    animation-delay: 0.04s;
+}
+
+.offer:nth-child(3) {
+    animation-delay: 0.08s;
+}
+
+.offer:nth-child(4) {
+    animation-delay: 0.12s;
+}
+
+.offer:nth-child(5) {
+    animation-delay: 0.16s;
+}
+
+.offer:active {
+    transform: scale(0.985);
+
+    box-shadow:
+        0 7px 22px rgba(25, 50, 90, 0.08);
+}
+
+
+/* =========================================================
+   TOP OF CARD
+   ========================================================= */
+
+.offer-top {
+    display: flex;
+    align-items: center;
+
+    gap: 12px;
+
+    margin-bottom: 17px;
+}
+
+.offer-logo {
+    width: 54px;
+    height: 54px;
+
+    flex: 0 0 54px;
+
+    padding: 7px;
 
     border-radius: 16px;
 
-    padding: 18px;
+    background: #f4f6fa;
 
-    margin-bottom: 15px;
+    object-fit: contain;
+
+    border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
-.offer h2 {
-    margin-top: 0;
+.offer-logo-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 54px;
+    height: 54px;
+
+    flex: 0 0 54px;
+
+    border-radius: 16px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(22, 140, 255, 0.12),
+            rgba(115, 87, 255, 0.12)
+        );
+
+    font-size: 23px;
 }
 
-.info p {
-    margin: 8px 0;
+.offer-title {
+    min-width: 0;
+    flex: 1;
 }
 
-button {
+.offer-title h2 {
+    margin: 0;
+
+    font-size: 18px;
+    line-height: 1.2;
+
+    font-weight: 800;
+
+    letter-spacing: -0.2px;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.offer-title p {
+    margin: 5px 0 0;
+
+    color: var(--hint);
+
+    font-size: 12px;
+}
+
+
+/* =========================================================
+   AMOUNT
+   ========================================================= */
+
+.amount-block {
+    position: relative;
+
+    margin-bottom: 12px;
+    padding: 16px;
+
+    border-radius: 18px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(22, 140, 255, 0.09),
+            rgba(115, 87, 255, 0.07)
+        );
+
+    border: 1px solid rgba(22, 140, 255, 0.08);
+}
+
+.amount-label {
+    margin-bottom: 5px;
+
+    color: var(--hint);
+
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.amount-value {
+    font-size: 25px;
+    line-height: 1.15;
+
+    font-weight: 850;
+
+    letter-spacing: -0.7px;
+}
+
+
+/* =========================================================
+   INFO
+   ========================================================= */
+
+.info {
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 9px;
+
+    margin-bottom: 12px;
+}
+
+.info-item {
+    padding: 12px 13px;
+
+    border-radius: 15px;
+
+    background: rgba(127, 127, 127, 0.055);
+
+    border: 1px solid rgba(127, 127, 127, 0.045);
+}
+
+.info-label {
+    display: block;
+
+    margin-bottom: 5px;
+
+    color: var(--hint);
+
+    font-size: 11px;
+}
+
+.info-value {
+    display: block;
+
+    font-size: 14px;
+
+    font-weight: 750;
+}
+
+
+/* =========================================================
+   DESCRIPTION
+   ========================================================= */
+
+.offer-description {
+    margin: 10px 2px 15px;
+
+    color: var(--hint);
+
+    font-size: 13px;
+
+    line-height: 1.48;
+}
+
+
+/* =========================================================
+   BUTTON
+   ========================================================= */
+
+.offer-button {
+    position: relative;
+
     width: 100%;
+    min-height: 51px;
 
-    border: none;
+    padding: 13px 18px;
 
-    border-radius: 12px;
+    border: 0;
 
-    padding: 13px;
+    border-radius: 16px;
 
-    font-size: 16px;
-    font-weight: bold;
+    background:
+        linear-gradient(
+            135deg,
+            var(--blue),
+            var(--purple)
+        );
 
-    background: var(--tg-theme-button-color);
-    color: var(--tg-theme-button-text-color);
+    color: #ffffff;
+
+    font-family: inherit;
+
+    font-size: 15px;
+    font-weight: 800;
+
+    letter-spacing: -0.1px;
 
     cursor: pointer;
+
+    box-shadow:
+        0 8px 20px rgba(22, 140, 255, 0.19);
+
+    transition:
+        transform 0.15s ease,
+        filter 0.15s ease,
+        box-shadow 0.15s ease;
 }
 
-button:active {
-    opacity: 0.8;
+.offer-button:active {
+    transform: scale(0.975);
+
+    filter: brightness(0.94);
+
+    box-shadow:
+        0 4px 12px rgba(22, 140, 255, 0.14);
+}
+
+.offer-button.disabled {
+    background: #aeb5bf;
+
+    box-shadow: none;
+
+    cursor: default;
+}
+
+
+/* =========================================================
+   LOADING
+   ========================================================= */
+
+.loading {
+    padding: 45px 15px;
+
+    color: var(--hint);
+
+    text-align: center;
+
+    font-size: 14px;
+}
+
+.loading::before {
+    content: "";
+
+    display: block;
+
+    width: 30px;
+    height: 30px;
+
+    margin: 0 auto 13px;
+
+    border: 3px solid rgba(22, 140, 255, 0.16);
+
+    border-top-color: var(--blue);
+
+    border-radius: 50%;
+
+    animation: spin 0.8s linear infinite;
+}
+
+
+/* =========================================================
+   ERROR
+   ========================================================= */
+
+.error-message {
+    padding: 20px;
+
+    border-radius: 18px;
+
+    background: var(--card);
+
+    border: 1px solid var(--border);
+
+    box-shadow: var(--shadow);
+
+    color: var(--hint);
+
+    text-align: center;
+
+    font-size: 14px;
+
+    line-height: 1.5;
+}
+
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.footer {
+    padding: 12px 8px 5px;
+
+    color: var(--hint);
+
+    font-size: 10px;
+
+    line-height: 1.5;
+
+    text-align: center;
+
+    opacity: 0.85;
+}
+
+
+/* =========================================================
+   DARK MODE
+   ========================================================= */
+
+@media (prefers-color-scheme: dark) {
+
+    :root {
+        --border: rgba(255, 255, 255, 0.07);
+
+        --shadow:
+            0 12px 35px rgba(0, 0, 0, 0.25);
+    }
+
+    body {
+        background:
+            radial-gradient(
+                circle at 90% -10%,
+                rgba(22, 140, 255, 0.16),
+                transparent 32%
+            ),
+            #101318;
+    }
+
+    .offer-logo {
+        background: #f1f3f6;
+    }
+
+    .info-item {
+        background: rgba(255, 255, 255, 0.045);
+    }
+}
+
+
+/* =========================================================
+   SMALL DEVICES
+   ========================================================= */
+
+@media (max-width: 380px) {
+
+    .container {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    .header {
+        padding: 21px 18px;
+        border-radius: 23px;
+    }
+
+    .header h1 {
+        font-size: 25px;
+    }
+
+    .offer {
+        padding: 15px;
+        border-radius: 20px;
+    }
+
+    .amount-value {
+        font-size: 22px;
+    }
+
+    .offer-title h2 {
+        font-size: 16px;
+    }
+}
+
+
+/* =========================================================
+   ANIMATIONS
+   ========================================================= */
+
+@keyframes pageAppear {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes cardAppear {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
