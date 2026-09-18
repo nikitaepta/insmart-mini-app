@@ -21,6 +21,15 @@ INSSMART_URL = "https://api.inssmart.ru/v1/product-finance/offers"
 
 INSSMART_TOKEN = os.getenv("INSSMART_TOKEN")
 
+@app.get("/api/debug-ip")
+def debug_ip():
+    response = requests.get(
+        "https://api.ipify.org?format=json",
+        timeout=10,
+    )
+
+    return response.json()
+
 
 @app.get("/api/offers")
 def get_offers():
@@ -104,3 +113,9 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000
     )
+    print("INSSMART REQUEST HEADERS:", {
+        "Authorization": "Bearer ***",
+        "Accept": "application/json",
+        "Origin": "https://partners.inssmart.ru",
+        "Referer": "https://partners.inssmart.ru/",
+    })
