@@ -1,3 +1,6 @@
 fastapi
 uvicorn
 requests
+aiogram>=3.0.0
+python-dotenv
+aiohttp

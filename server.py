@@ -2,9 +2,17 @@ import os
 import uuid
 import time
 import requests
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+
+BASE_DIR = Path(__file__).resolve().parent
+ENV_FILE = BASE_DIR / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
 
 
 app = FastAPI()
@@ -221,6 +229,39 @@ def request_offers(token):
     return response
 
 
+def _normalize_offers_payload(data):
+    """
+    Инсмарт отдаёт {total, items:[...]}.
+    Для совместимости с фронтендом (ожидает offers) и ботом (поддерживает оба)
+    возвращаем {total, items, offers:[...]}.
+    """
+    if isinstance(data, list):
+        items = data
+        total = len(data)
+        payload = {}
+    elif isinstance(data, dict):
+        items = data.get("items")
+        if not isinstance(items, list):
+            items = data.get("offers") or []
+            if not isinstance(items, list):
+                items = []
+        total = data.get("total")
+        if total is None:
+            total = len(items)
+        try:
+            total = int(total)
+        except (TypeError, ValueError):
+            total = len(items)
+        payload = {k: v for k, v in data.items() if k not in ("items", "offers", "total")}
+    else:
+        return {"total": 0, "items": [], "offers": []}
+
+    payload["items"] = items
+    payload["offers"] = items
+    payload["total"] = total
+    return payload
+
+
 @app.get("/api/offers")
 def offers():
     try:
@@ -240,7 +281,12 @@ def offers():
                 detail=f"Inssmart returned HTTP {response.status_code}",
             )
 
-        return response.json()
+        try:
+            raw = response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Inssmart returned invalid JSON: {exc}")
+
+        return _normalize_offers_payload(raw)
 
     except HTTPException:
         raise
