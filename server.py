@@ -1,6 +1,8 @@
 import os
 import uuid
 import time
+from typing import List
+
 import requests
 from pathlib import Path
 
@@ -35,9 +37,19 @@ app.add_middleware(
 # INSSMART
 # =========================
 
-TOKEN_URL = "https://api.inssmart.ru/v1/account/accounts/token"
-
 OFFERS_URL = "https://api.inssmart.ru/v1/product-finance/offers"
+
+# Варианты URL для получения JWT (пробуем по порядку, пока не сработает).
+# Если у тебя есть ручной токен из браузера — задай INSSMART_BEARER_TOKEN,
+# и эти запросы вообще не выполняются.
+TOKEN_URL_CANDIDATES = [
+    "https://api.inssmart.ru/v1/account/accounts/token",
+    "https://api.inssmart.ru/v1/account/auth/token",
+    "https://api.inssmart.ru/v1/auth/login",
+    "https://api.inssmart.ru/v1/account/token",
+    "https://partners.inssmart.ru/api/v1/auth/token",
+    "https://partners.inssmart.ru/api/auth/token",
+]
 
 
 INSSMART_PHONE = os.getenv("INSSMART_PHONE", "").strip()
@@ -52,6 +64,12 @@ INSSMART_DOMAIN = os.getenv(
     "INSSMART_DOMAIN",
     "partners"
 )
+
+# Если токен достанешь руками из DevTools браузера — вставь сюда (в .env).
+# Валидный JWT обычно вида: eyJhbGciOiJ... .xxxx... .yyyy...
+INSSMART_BEARER_TOKEN = os.getenv("INSSMART_BEARER_TOKEN", "").strip()
+if INSSMART_BEARER_TOKEN.startswith("Bearer "):
+    INSSMART_BEARER_TOKEN = INSSMART_BEARER_TOKEN[7:].strip()
 
 
 # Текущий токен держим только в памяти Railway
@@ -119,19 +137,8 @@ def extract_token(data):
     return None
 
 
-def get_inssmart_token():
-    global _cached_token
-
-    if _cached_token:
-        return _cached_token
-
-    if not INSSMART_PHONE:
-        raise RuntimeError("Не задана переменная INSSMART_PHONE")
-
-    if not INSSMART_PASSWORD:
-        raise RuntimeError("Не задана переменная INSSMART_PASSWORD")
-
-    form_data = {
+def _build_auth_payload():
+    return {
         "statVisitId": str(uuid.uuid4()),
         "statClientId": str(uuid.uuid4()),
         "statYmClientId": str(int(time.time() * 1000)),
@@ -141,12 +148,9 @@ def get_inssmart_token():
         "password": INSSMART_PASSWORD,
     }
 
-    files = {
-        key: (None, str(value))
-        for key, value in form_data.items()
-    }
 
-    headers = {
+def _default_headers():
+    return {
         "Accept": "application/json, text/plain, */*",
         "Origin": "https://partners.inssmart.ru",
         "Referer": "https://partners.inssmart.ru/",
@@ -159,39 +163,114 @@ def get_inssmart_token():
         "Pragma": "no-cache",
     }
 
-    response = requests.post(
-        TOKEN_URL,
-        files=files,
-        headers=headers,
-        timeout=30,
+
+def _try_request_token_once(url: str, payload: dict, variant: str):
+    """
+    variant:
+      - "multipart"  →  multipart/form-data (как браузер при загрузке файлов)
+      - "form"       →  application/x-www-form-urlencoded (стандартная форма)
+      - "json"       →  application/json (современные API)
+    """
+    headers = _default_headers()
+    if variant == "multipart":
+        files = {k: (None, str(v)) for k, v in payload.items()}
+        return requests.post(url, files=files, headers=headers, timeout=30)
+    if variant == "form":
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        return requests.post(url, data=payload, headers=headers, timeout=30)
+    if variant == "json":
+        headers["Content-Type"] = "application/json"
+        return requests.post(url, json=payload, headers=headers, timeout=30)
+    raise ValueError(variant)
+
+
+def get_inssmart_token():
+    global _cached_token
+
+    if _cached_token:
+        return _cached_token
+
+    # 1. Ручной токен — самый быстрый путь (без авторизации по паролю)
+    if INSSMART_BEARER_TOKEN:
+        if INSSMART_BEARER_TOKEN.count(".") == 2:
+            print("[inssmart] Использую ручной INSSMART_BEARER_TOKEN из env.")
+            _cached_token = INSSMART_BEARER_TOKEN
+            return _cached_token
+        print(
+            "[inssmart] INSSMART_BEARER_TOKEN задан, но не похож на JWT "
+            "(3 части через точку). Игнорирую."
+        )
+
+    if not INSSMART_PHONE:
+        raise RuntimeError(
+            "Не задан INSSMART_PHONE. "
+            "Либо укажи INSSMART_PHONE + INSSMART_PASSWORD, "
+            "либо сразу INSSMART_BEARER_TOKEN."
+        )
+    if not INSSMART_PASSWORD:
+        raise RuntimeError(
+            "Не задан INSSMART_PASSWORD. "
+            "Либо укажи INSSMART_PHONE + INSSMART_PASSWORD, "
+            "либо сразу INSSMART_BEARER_TOKEN."
+        )
+
+    payload = _build_auth_payload()
+    variants = ["multipart", "form", "json"]
+    errors: List[str] = []
+
+    for url in TOKEN_URL_CANDIDATES:
+        for variant in variants:
+            try:
+                resp = _try_request_token_once(url, payload, variant)
+            except requests.RequestException as exc:
+                errors.append(f"{variant.upper()} {url} → Network {exc.__class__.__name__}")
+                continue
+
+            if resp.status_code == 404:
+                errors.append(f"{variant.upper()} {url} → 404 NOT FOUND")
+                continue
+
+            if not resp.ok:
+                snippet = ""
+                try:
+                    snippet = resp.text[:200]
+                except Exception:
+                    pass
+                errors.append(
+                    f"{variant.upper()} {url} → HTTP {resp.status_code} | {snippet!r}"
+                )
+                continue
+
+            try:
+                data = resp.json()
+            except ValueError:
+                data = resp.text
+
+            token = extract_token(data)
+            if token:
+                print(f"[inssmart] Успешно получили JWT через {variant.upper()} {url}")
+                _cached_token = token
+                return _cached_token
+
+            if isinstance(data, dict):
+                keys = list(data.keys())
+            else:
+                keys = [type(data).__name__]
+            errors.append(
+                f"{variant.upper()} {url} → HTTP 200, но JWT не найден. Поля: {keys}"
+            )
+
+    # Ни один из вариантов не сработал — подробный вывод
+    print("[inssmart] Все варианты получения токена провалились:")
+    for msg in errors:
+        print(f"  ❌ {msg}")
+
+    raise RuntimeError(
+        "Не удалось получить токен Инсмарта. "
+        "Варианты: 1) укажи в env INSSMART_BEARER_TOKEN "
+        "(скопируй из DevTools браузера в partners.inssmart.ru). "
+        "2) проверь, что INSSMART_PHONE в формате 7900XXXXXXX и пароль верный."
     )
-
-    if not response.ok:
-        raise RuntimeError(
-            f"Inssmart token request failed: HTTP {response.status_code}"
-        )
-
-    try:
-        data = response.json()
-    except ValueError:
-        data = response.text
-
-    token = extract_token(data)
-
-    if not token:
-        if isinstance(data, dict):
-            keys = list(data.keys())
-        else:
-            keys = [type(data).__name__]
-
-        raise RuntimeError(
-            f"Inssmart вернул ответ, но JWT не найден. "
-            f"Поля ответа: {keys}"
-        )
-
-    _cached_token = token
-
-    return token
 
 
 def refresh_inssmart_token():
