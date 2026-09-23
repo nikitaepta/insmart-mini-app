@@ -101,6 +101,31 @@ INSSMART_BEARER_TOKEN = os.getenv("INSSMART_BEARER_TOKEN", "").strip()
 if INSSMART_BEARER_TOKEN.startswith("Bearer "):
     INSSMART_BEARER_TOKEN = INSSMART_BEARER_TOKEN[7:].strip()
 
+# =====================================================================
+# Прокси / обход WAF Инсмарта (503 Service Temporarily Unavailable)
+# =====================================================================
+# Инсмарт активно банит облачные IP (Railway / AWS / GCP).
+# Решение 1: residential/static proxy РФ (покупается за 50-300₽/мес).
+#   Формат: http://user:pass@host:port   или   socks5h://user:pass@host:port
+#   Пример: INSSMART_PROXY_URL=http://login:password@1.2.3.4:5678
+INSSMART_PROXY_URL = os.getenv("INSSMART_PROXY_URL", "").strip() or \
+                     os.getenv("HTTP_PROXY", "").strip() or \
+                     os.getenv("HTTPS_PROXY", "").strip()
+
+# Решение 2: внешний token-прокси (самый надёжный и бесплатный).
+# Запускаешь scripts/token_proxy.py НА ДОМАШНЕМ КОМПЬЮТЕРЕ или VPS с РФ-IP.
+# Он по твоему телефону/паролю получает JWT у Инсарта (с НЕзабаненного IP),
+# а Railway сервер приходит за JWT к ТЕБЕ, а не к Inssmart напрямую.
+# Пример: http://<твой-домашний-айпи>:8787/token
+INSSMART_TOKEN_EXTERNAL_URL = os.getenv("INSSMART_TOKEN_EXTERNAL_URL", "").strip()
+
+
+def _inssmart_requests_proxies() -> dict | None:
+    """Готовит proxies dict для requests."""
+    if not INSSMART_PROXY_URL:
+        return None
+    return {"http": INSSMART_PROXY_URL, "https": INSSMART_PROXY_URL}
+
 
 # Текущий токен держим только в памяти Railway
 _cached_token = None
@@ -267,17 +292,18 @@ def _try_request_token_once(url: str, payload: dict, variant: str):
       - "form"       →  application/x-www-form-urlencoded (стандартная форма)
       - "json"       →  application/json (современные API)
     """
+    proxies = _inssmart_requests_proxies()
     headers = _default_headers(url)
     if variant == "multipart":
         files = {k: (None, str(v)) for k, v in payload.items()}
         # Для multipart Content-Type задаёт сама requests (с boundary)
-        return requests.post(url, files=files, headers=headers, timeout=30)
+        return requests.post(url, files=files, headers=headers, proxies=proxies, timeout=30)
     if variant == "form":
         headers["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8"
-        return requests.post(url, data=payload, headers=headers, timeout=30)
+        return requests.post(url, data=payload, headers=headers, proxies=proxies, timeout=30)
     if variant == "json":
         headers["Content-Type"] = "application/json;charset=UTF-8"
-        return requests.post(url, json=payload, headers=headers, timeout=30)
+        return requests.post(url, json=payload, headers=headers, proxies=proxies, timeout=30)
     raise ValueError(variant)
 
 
@@ -286,6 +312,46 @@ def get_inssmart_token():
 
     if _cached_token:
         return _cached_token
+
+    # 0. Внешний token-proxy (самый надёжный обход WAF Инсмарта).
+    #    Берём JWT напрямую у твоего домашнего прокси (scripts/token_proxy.py)
+    if INSSMART_TOKEN_EXTERNAL_URL:
+        try:
+            resp = requests.get(
+                INSSMART_TOKEN_EXTERNAL_URL,
+                proxies=_inssmart_requests_proxies(),
+                timeout=30,
+            )
+            if not resp.ok:
+                print(
+                    f"[inssmart] Внешний token-proxy {INSSMART_TOKEN_EXTERNAL_URL!r} "
+                    f"вернул HTTP {resp.status_code}. Ответ: {resp.text[:200]!r}"
+                )
+            else:
+                try:
+                    data = resp.json()
+                except ValueError:
+                    data = resp.text
+                token = extract_token(data)
+                if isinstance(data, dict) and isinstance(data.get("token"), str):
+                    if not token:
+                        token = data["token"].strip()
+                if token:
+                    print(
+                        f"[inssmart] ✅ Использую JWT из внешнего token-proxy "
+                        f"{INSSMART_TOKEN_EXTERNAL_URL!r}."
+                    )
+                    _cached_token = token
+                    return _cached_token
+                print(
+                    f"[inssmart] Внешний token-proxy вернул 200, но JWT не найден. "
+                    f"Ответ keys: {list(data) if isinstance(data, dict) else type(data).__name__}"
+                )
+        except requests.RequestException as exc:
+            print(
+                f"[inssmart] Внешний token-proxy недоступен "
+                f"({exc.__class__.__name__}). Падаю назад на локальную авторизацию."
+            )
 
     # 1. Ручной токен — самый быстрый путь (без авторизации по паролю)
     if INSSMART_BEARER_TOKEN:
@@ -302,13 +368,13 @@ def get_inssmart_token():
         raise RuntimeError(
             "Не задан INSSMART_PHONE. "
             "Либо укажи INSSMART_PHONE + INSSMART_PASSWORD, "
-            "либо сразу INSSMART_BEARER_TOKEN."
+            "либо сразу INSSMART_BEARER_TOKEN, либо INSSMART_TOKEN_EXTERNAL_URL."
         )
     if not INSSMART_PASSWORD:
         raise RuntimeError(
             "Не задан INSSMART_PASSWORD. "
             "Либо укажи INSSMART_PHONE + INSSMART_PASSWORD, "
-            "либо сразу INSSMART_BEARER_TOKEN."
+            "либо сразу INSSMART_BEARER_TOKEN, либо INSSMART_TOKEN_EXTERNAL_URL."
         )
 
     all_payloads = _build_all_auth_payload_variants()
@@ -453,13 +519,14 @@ def request_offers(token):
         "useRetention": "true",
     }
 
+    h = _default_headers(OFFERS_URL)
+    h["Authorization"] = f"Bearer {token}"
+
     response = requests.get(
         OFFERS_URL,
         params=params,
-        headers={
-            "Accept": "application/json, text/plain, */*",
-            "Authorization": f"Bearer {token}",
-        },
+        headers=h,
+        proxies=_inssmart_requests_proxies(),
         timeout=30,
     )
 
